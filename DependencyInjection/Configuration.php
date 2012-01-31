@@ -57,6 +57,7 @@ class Configuration implements ConfigurationInterface
                     ->scalarNode('id')->cannotBeEmpty()->end()
                     ->scalarNode('separator')->defaultValue('_')->end()
                     ->booleanNode('lower_case')->defaultTrue()->end()
+                    ->booleanNode('ucfirst')->defaultFalse()->end()
                     ->booleanNode('enable_cache')->defaultTrue()->end()
                 ->end()
             ->end()

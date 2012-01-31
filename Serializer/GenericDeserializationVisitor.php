@@ -31,200 +31,225 @@ use JMS\SerializerBundle\Metadata\ClassMetadata;
  */
 abstract class GenericDeserializationVisitor extends AbstractDeserializationVisitor
 {
-    private $navigator;
-    private $result;
-    private $objectConstructor;
-    private $objectStack;
-    private $currentObject;
 
-    public function __construct(PropertyNamingStrategyInterface $namingStrategy, array $customHandlers, ObjectConstructorInterface $objectConstructor)
+  private $navigator;
+  private $result;
+  private $objectConstructor;
+  private $objectStack;
+  private $currentObject;
+
+  public function __construct(PropertyNamingStrategyInterface $namingStrategy, array $customHandlers, ObjectConstructorInterface $objectConstructor)
+  {
+    parent::__construct($namingStrategy, $customHandlers);
+    $this->objectConstructor = $objectConstructor;
+  }
+
+  public function setNavigator(GraphNavigator $navigator)
+  {
+    $this->navigator = $navigator;
+    $this->result = null;
+    $this->objectStack = new \SplStack;
+  }
+
+  public function getNavigator()
+  {
+    return $this->navigator;
+  }
+
+  public function prepare($data)
+  {
+    return $this->decode($data);
+  }
+
+  public function visitNull($data, $type)
+  {
+    return null;
+  }
+
+  public function visitString($data, $type)
+  {
+    $data = (string) trim($data);
+    $data = $data ? $data : null;
+
+    if (null === $this->result)
     {
-        parent::__construct($namingStrategy, $customHandlers);
-        $this->objectConstructor = $objectConstructor;
+      $this->result = $data;
     }
 
-    public function setNavigator(GraphNavigator $navigator)
+    return $data;
+  }
+
+  public function visitBoolean($data, $type)
+  {
+    $data = (Boolean) $data;
+
+    if (null === $this->result)
     {
-        $this->navigator = $navigator;
-        $this->result = null;
-        $this->objectStack = new \SplStack;
+      $this->result = $data;
     }
 
-    public function getNavigator()
+    return $data;
+  }
+
+  public function visitInteger($data, $type)
+  {
+    $data = (integer) $data;
+
+    if (null === $this->result)
     {
-        return $this->navigator;
+      $this->result = $data;
     }
 
-    public function prepare($data)
+    return $data;
+  }
+
+  public function visitDouble($data, $type)
+  {
+    $data = (double) $data;
+
+    if (null === $this->result)
     {
-        return $this->decode($data);
+      $this->result = $data;
     }
 
-    public function visitString($data, $type)
+    return $data;
+  }
+
+  public function visitArray($data, $type)
+  {
+    if (!is_array($data))
     {
-        $data = (string) $data;
-
-        if (null === $this->result) {
-            $this->result = $data;
-        }
-
-        return $data;
+      throw new RuntimeException(sprintf('Expected array, but got %s: %s', gettype($data), json_encode($data)));
     }
 
-    public function visitBoolean($data, $type)
+    // not specified of which type keys/values should be, just pass as is
+    if ('array' === $type)
     {
-        $data = (Boolean) $data;
+      if (null === $this->result)
+      {
+        $this->result = $data;
+      }
 
-        if (null === $this->result) {
-            $this->result = $data;
-        }
-
-        return $data;
+      return $data;
     }
 
-    public function visitInteger($data, $type)
+    // list
+    if (false === $pos = strpos($type, ',', 6))
     {
-        $data = (integer) $data;
+      $listType = substr($type, 6, -1);
 
-        if (null === $this->result) {
-            $this->result = $data;
-        }
+      $result = array();
+      if (null === $this->result)
+      {
+        $this->result = &$result;
+      }
 
-        return $data;
+      foreach ($data as $v)
+      {
+        $result[] = $this->navigator->accept($v, $listType, $this);
+      }
+
+      return $result;
     }
 
-    public function visitDouble($data, $type)
+    // map
+    $keyType = trim(substr($type, 6, $pos - 6));
+    $entryType = trim(substr($type, $pos + 1, -1));
+
+    $result = array();
+    if (null === $this->result)
     {
-        $data = (double) $data;
-
-        if (null === $this->result) {
-            $this->result = $data;
-        }
-
-        return $data;
+      $this->result = &$result;
     }
 
-    public function visitArray($data, $type)
+    foreach ($data as $k => $v)
     {
-        if (!is_array($data)) {
-            throw new RuntimeException(sprintf('Expected array, but got %s: %s', gettype($data), json_encode($data)));
-        }
-
-        // not specified of which type keys/values should be, just pass as is
-        if ('array' === $type) {
-            if (null === $this->result) {
-                $this->result = $data;
-            }
-
-            return $data;
-        }
-
-        // list
-        if (false === $pos = strpos($type, ',', 6)) {
-            $listType = substr($type, 6, -1);
-
-            $result = array();
-            if (null === $this->result) {
-                $this->result = &$result;
-            }
-
-            foreach ($data as $v) {
-                $result[] = $this->navigator->accept($v, $listType, $this);
-            }
-
-            return $result;
-        }
-
-        // map
-        $keyType = trim(substr($type, 6, $pos - 6));
-        $entryType = trim(substr($type, $pos+1, -1));
-
-        $result = array();
-        if (null === $this->result) {
-            $this->result = &$result;
-        }
-
-        foreach ($data as $k => $v) {
-            $result[$this->navigator->accept($k, $keyType, $this)] = $this->navigator->accept($v, $entryType, $this);
-        }
-
-        return $result;
+      $result[$this->navigator->accept($k, $keyType, $this)] = $this->navigator->accept($v, $entryType, $this);
     }
 
-    public function visitTraversable($data, $type)
+    return $result;
+  }
+
+  public function visitTraversable($data, $type)
+  {
+    throw new RuntimeException('Traversable is not supported for deserialization.');
+  }
+
+  public function startVisitingObject(ClassMetadata $metadata, $data, $type)
+  {
+    $this->setCurrentObject($this->objectConstructor->construct($this, $metadata, $data, $type));
+
+    if (null === $this->result)
     {
-        throw new RuntimeException('Traversable is not supported for deserialization.');
+      $this->result = $this->currentObject;
+    }
+  }
+
+  public function visitProperty(PropertyMetadata $metadata, $data)
+  {
+    $name = $this->namingStrategy->translateName($metadata);
+
+    if (!isset($data[$name]))
+    {
+      return;
     }
 
-    public function startVisitingObject(ClassMetadata $metadata, $data, $type)
+    if (!$metadata->type)
     {
-        $this->setCurrentObject($this->objectConstructor->construct($this, $metadata, $data, $type));
-
-        if (null === $this->result) {
-            $this->result = $this->currentObject;
-        }
+      throw new RuntimeException(sprintf('You must define a type for %s::$%s.', $metadata->reflection->getDeclaringClass()->getName(), $metadata->name));
     }
 
-    public function visitProperty(PropertyMetadata $metadata, $data)
+    $v = $this->navigator->accept($data[$name], $metadata->type, $this);
+    
+    if (null === $v)
     {
-        $name = $this->namingStrategy->translateName($metadata);
-
-        if (!isset($data[$name])) {
-            return;
-        }
-
-        if (!$metadata->type) {
-            throw new RuntimeException(sprintf('You must define a type for %s::$%s.', $metadata->reflection->getDeclaringClass()->getName(), $metadata->name));
-        }
-
-        $v = $this->navigator->accept($data[$name], $metadata->type, $this);
-        if (null === $v) {
-            return;
-        }
-
-        if (null === $metadata->setter) {
-            $metadata->reflection->setValue($this->currentObject, $v);
-
-            return;
-        }
-
-        $this->currentObject->{$metadata->setter}($v);
+      //return;
     }
 
-    public function endVisitingObject(ClassMetadata $metadata, $data, $type)
+    if (null === $metadata->setter)
     {
-        $obj = $this->currentObject;
-        $this->revertCurrentObject();
+      $metadata->reflection->setValue($this->currentObject, $v);
 
-        return $obj;
+      return;
     }
 
-    public function visitPropertyUsingCustomHandler(PropertyMetadata $metadata, $object)
-    {
-        // TODO
-        return false;
-    }
+    $this->currentObject->{$metadata->setter}($v);
+  }
 
-    public function getResult()
-    {
-        return $this->result;
-    }
+  public function endVisitingObject(ClassMetadata $metadata, $data, $type)
+  {
+    $obj = $this->currentObject;
+    $this->revertCurrentObject();
 
-    public function setCurrentObject($object)
-    {
-        $this->objectStack->push($this->currentObject);
-        $this->currentObject = $object;
-    }
+    return $obj;
+  }
 
-    public function getCurrentObject()
-    {
-        return $this->currentObject;
-    }
+  public function visitPropertyUsingCustomHandler(PropertyMetadata $metadata, $object)
+  {
+    // TODO
+    return false;
+  }
 
-    public function revertCurrentObject()
-    {
-        return $this->currentObject = $this->objectStack->pop();
-    }
+  public function getResult()
+  {
+    return $this->result;
+  }
 
-    abstract protected function decode($str);
+  public function setCurrentObject($object)
+  {
+    $this->objectStack->push($this->currentObject);
+    $this->currentObject = $object;
+  }
+
+  public function getCurrentObject()
+  {
+    return $this->currentObject;
+  }
+
+  public function revertCurrentObject()
+  {
+    return $this->currentObject = $this->objectStack->pop();
+  }
+
+  abstract protected function decode($str);
 }

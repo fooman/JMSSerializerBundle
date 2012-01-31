@@ -31,6 +31,7 @@ interface VisitorInterface
     function visitUsingCustomHandler($data, $type, &$visited);
     function visitArray($data, $type);
     function visitTraversable($data, $type);
+    function visitNull($data, $type);
     function startVisitingObject(ClassMetadata $metadata, $data, $type);
     function visitProperty(PropertyMetadata $metadata, $data);
     function endVisitingObject(ClassMetadata $metadata, $data, $type);

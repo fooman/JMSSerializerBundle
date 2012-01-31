@@ -81,6 +81,18 @@ class XmlSerializationVisitor extends AbstractSerializationVisitor
 
         return $this->document->createCDATASection($data);
     }
+    
+    public function visitNull($data, $type)
+    {
+      if (null === $this->document) {
+            $this->document = $this->createDocument(null, null, true);
+            $this->currentNode->appendChild($this->document->createTextNode(''));
+
+            return;
+        }
+
+        return $this->document->createTextNode('');
+    }
 
     public function visitBoolean($data, $type)
     {
@@ -149,9 +161,10 @@ class XmlSerializationVisitor extends AbstractSerializationVisitor
     {
         $v = (null === $metadata->getter ? $metadata->reflection->getValue($object)
             : $object->{$metadata->getter}());
-
+        
         if (null === $v) {
-            return;
+            //return;
+            $tmp = $v;
         }
 
         if ($metadata->xmlAttribute) {

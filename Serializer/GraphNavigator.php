@@ -46,7 +46,7 @@ final class GraphNavigator
         // determine type if not given
         if (null === $type) {
             if (null === $data) {
-                return null;
+                return $visitor->visitNull($data, $type);
             }
 
             $type = gettype($data);
